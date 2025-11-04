@@ -1,8 +1,7 @@
 name: GetLibcoreAar
 on:
   workflow_dispatch:
-    inputs: {}
-
+    inputs:
 jobs:
   libcore:
     name: Native Build (LibCore)
@@ -10,53 +9,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # 精确计算所有相关文件哈希
-      - name: Compute Build Hashes
-        run: |
-          find .github/workflows buildScript libcore -type f | xargs cat | sha1sum > total_hash
-          find libcore/*.sh -type f | xargs cat | sha1sum > libcore_status
-
-      # 配置NDK环境（关键修复）
-      - name: Setup NDK
-        uses: ntt/android-ndk-install@v1
-        with:
-          ndk-version: "25.1.8937393"  # 明确指定兼容版本
-          install-path: ${{ runner.tool_cache }}/android/ndk
-
-      # 优化缓存策略
+      - name: Golang Status
+        run: find buildScript libcore/*.sh | xargs cat | sha1sum > golang_status
+      - name: Libcore Status
+        run: git ls-files libcore | xargs cat | sha1sum > libcore_status
       - name: LibCore Cache
         id: cache
         uses: actions/cache@v4
         with:
           path: |
             app/libs/libcore.aar
-          key: libcore-aar-${{ hashFiles('total_hash', 'libcore_status') }}
-          restore-keys: libcore-aar-
-
+          key: ${{ hashFiles('.github/workflows/*', 'golang_status', 'libcore_status') }}
       - name: Install Golang
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/setup-go@v5
         with:
           go-version: ^1.25
-
       - name: Native Build
         if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          # 显式设置NDK路径
-          echo "ANDROID_NDK_HOME=${{ runner.tool_cache }}/android/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-          ./run lib core
-          
-          # 强制验证生成文件
-          if [ ! -f app/libs/libcore.aar ]; then
-            echo "Error: libcore.aar not generated at expected path!"
-            exit 1
-          fi
-          ls -lh app/libs/libcore.aar
-
-      # 添加Artifact上传作为备用获取方式
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: libcore-aar
-          path: app/libs/libcore.aar
+        run: ./run lib core
